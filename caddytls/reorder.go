@@ -51,7 +51,7 @@ func (c *Config) PreferChaChaIfFirst(clientHello *tls.ClientHelloInfo) (*tls.Con
 	c.TLSConfig.CipherSuites = reordered
 
 	// It's safe to set the maximum version as the minimum version here
-	if c.TLSConfig.MaxVersion > c.TLSConfig.MinVersion {
+	if clientHello.SupportedVersions[0] == c.TLSConfig.MaxVersion && c.TLSConfig.MaxVersion > c.TLSConfig.MinVersion {
 		c.TLSConfig.MinVersion = c.TLSConfig.MaxVersion
 	}
 

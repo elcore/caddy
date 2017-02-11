@@ -49,6 +49,10 @@ func TestPreferChaChaIfFirstWithGREASE(t *testing.T) {
 			0xc02b,
 			0xc02f,
 		},
+		SupportedVersions: []uint16{
+			0x0303,
+			0x0302,
+		},
 	}
 
 	output, err := c.PreferChaChaIfFirst(clientHello)
@@ -90,6 +94,10 @@ func TestPreferChaChaIfFirstWithoutGREASE(t *testing.T) {
 			0xc02b,
 			0xc02f,
 		},
+		SupportedVersions: []uint16{
+			0x0303,
+			0x0302,
+		},
 	}
 
 	output, err := c.PreferChaChaIfFirst(clientHello)
@@ -129,6 +137,10 @@ func TestPreferChaChaIfFirstWithoutChaCha(t *testing.T) {
 			0xc030,
 			0xc02b,
 			0xc02f,
+		},
+		SupportedVersions: []uint16{
+			0x0303,
+			0x0302,
 		},
 	}
 
