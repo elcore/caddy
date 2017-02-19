@@ -73,6 +73,10 @@ func (cg ConfigGroup) GetConfigForClient(clientHello *tls.ClientHelloInfo) (*tls
 	config := cg.getConfig(clientHello.ServerName)
 
 	if config != nil {
+		if rTLS, reordered := preferChaChaIfFirst(config.tlsConfig, clientHello); reordered {
+			return rTLS, nil
+		}
+
 		return config.tlsConfig, nil
 	}
 
