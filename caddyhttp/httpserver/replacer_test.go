@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,7 +39,7 @@ func TestReplace(t *testing.T) {
 	recordRequest := NewResponseRecorder(w)
 	reader := strings.NewReader(`{"username": "dennis"}`)
 
-	request, err := http.NewRequest("POST", "http://localhost", reader)
+	request, err := http.NewRequest("POST", "http://localhost/?foo=bar", reader)
 	if err != nil {
 		t.Fatal("Request Formation Failed\n")
 	}
@@ -73,7 +74,7 @@ func TestReplace(t *testing.T) {
 		{"{when_iso}", "2006-01-02T15:04:12Z"},
 		{"The Custom header is {>Custom}.", "The Custom header is foobarbaz."},
 		{"The CustomAdd header is {>CustomAdd}.", "The CustomAdd header is caddy."},
-		{"The request is {request}.", "The request is POST / HTTP/1.1\\r\\nHost: localhost\\r\\n" +
+		{"The request is {request}.", "The request is POST /?foo=bar HTTP/1.1\\r\\nHost: localhost\\r\\n" +
 			"Cookie: foo=bar; taste=delicious\\r\\nCustom: foobarbaz\\r\\nCustomadd: caddy\\r\\n" +
 			"Shorterval: 1\\r\\n\\r\\n."},
 		{"The cUsToM header is {>cUsToM}...", "The cUsToM header is foobarbaz..."},
@@ -84,6 +85,9 @@ func TestReplace(t *testing.T) {
 		{"Bad {}", "Bad -"},
 		{"Cookies are {~taste}", "Cookies are delicious"},
 		{"Missing cookie is {~missing}", "Missing cookie is -"},
+		{"Query string is {query}", "Query string is foo=bar"},
+		{"Query string value for foo is {?foo}", "Query string value for foo is bar"},
+		{"Missing query string argument is {?missing}", "Missing query string argument is "},
 	}
 
 	for _, c := range testCases {
@@ -144,6 +148,40 @@ func TestSet(t *testing.T) {
 	if repl.Replace("The value of variable is {variable}") != "The value of variable is value" {
 		t.Error("Expected variable replacement failed")
 	}
+}
+
+// Test function to test that various placeholders hold correct values after a rewrite
+// has been performed.  The NewRequest actually contains the rewritten value.
+func TestPathRewrite(t *testing.T) {
+	w := httptest.NewRecorder()
+	recordRequest := NewResponseRecorder(w)
+	reader := strings.NewReader(`{"username": "dennis"}`)
+
+	request, err := http.NewRequest("POST", "http://getcaddy.com/index.php?key=value", reader)
+	if err != nil {
+		t.Fatalf("Request Formation Failed: %s\n", err.Error())
+	}
+
+	ctx := context.WithValue(request.Context(), URIxRewriteCtxKey, "a/custom/path.php?key=value")
+	request = request.WithContext(ctx)
+
+	repl := NewReplacer(request, recordRequest, "")
+
+	if repl.Replace("This path is '{path}'") != "This path is 'a/custom/path.php'" {
+		t.Error("Expected host {path} replacement failed  (" + repl.Replace("This path is '{path}'") + ")")
+	}
+
+	if repl.Replace("This path is {rewrite_path}") != "This path is /index.php" {
+		t.Error("Expected host {rewrite_path} replacement failed (" + repl.Replace("This path is {rewrite_path}") + ")")
+	}
+	if repl.Replace("This path is '{uri}'") != "This path is 'a/custom/path.php?key=value'" {
+		t.Error("Expected host {uri} replacement failed  (" + repl.Replace("This path is '{uri}'") + ")")
+	}
+
+	if repl.Replace("This path is {rewrite_uri}") != "This path is /index.php?key=value" {
+		t.Error("Expected host {rewrite_uri} replacement failed (" + repl.Replace("This path is {rewrite_uri}") + ")")
+	}
+
 }
 
 func TestRound(t *testing.T) {

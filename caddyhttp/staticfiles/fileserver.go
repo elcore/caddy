@@ -3,12 +3,14 @@ package staticfiles
 import (
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/mholt/caddy"
 )
 
 // FileServer implements a production-ready file server
@@ -90,17 +92,18 @@ func (fs FileServer) serveFile(w http.ResponseWriter, r *http.Request, name stri
 	}
 
 	// redirect to canonical path
-	url := r.URL.Path
 	if d.IsDir() {
-		// Ensure / at end of directory url
-		if !strings.HasSuffix(url, "/") {
-			Redirect(w, r, path.Base(url)+"/", http.StatusMovedPermanently)
+		// Ensure / at end of directory url. If the original URL path is
+		// used then ensure / exists as well.
+		if !strings.HasSuffix(r.URL.Path, "/") {
+			RedirectToDir(w, r)
 			return http.StatusMovedPermanently, nil
 		}
 	} else {
-		// Ensure no / at end of file url
-		if strings.HasSuffix(url, "/") {
-			Redirect(w, r, "../"+path.Base(url), http.StatusMovedPermanently)
+		// Ensure no / at end of file url. If the original URL path is
+		// used then ensure no / exists as well.
+		if strings.HasSuffix(r.URL.Path, "/") {
+			RedirectToFile(w, r)
 			return http.StatusMovedPermanently, nil
 		}
 	}
@@ -182,6 +185,7 @@ func (fs FileServer) serveFile(w http.ResponseWriter, r *http.Request, name stri
 
 		w.Header().Add("Vary", "Accept-Encoding")
 		w.Header().Set("Content-Encoding", encoding)
+		w.Header().Set("Content-Length", strconv.FormatInt(encodedFileInfo.Size(), 10))
 
 		defer f.Close()
 		break
@@ -214,14 +218,34 @@ func (fs FileServer) IsHidden(d os.FileInfo) bool {
 	return false
 }
 
-// Redirect sends an HTTP redirect to the client but will preserve
-// the query string for the new path. Based on http.localRedirect
-// from the Go standard library.
-func Redirect(w http.ResponseWriter, r *http.Request, newPath string, statusCode int) {
-	if q := r.URL.RawQuery; q != "" {
-		newPath += "?" + q
+// RedirectToDir replies to the request with a redirect to the URL in r, which
+// has been transformed to indicate that the resource being requested is a
+// directory.
+func RedirectToDir(w http.ResponseWriter, r *http.Request) {
+	toURL, _ := url.Parse(r.URL.String())
+
+	path, ok := r.Context().Value(URLPathCtxKey).(string)
+	if ok && !strings.HasSuffix(path, "/") {
+		toURL.Path = path
 	}
-	http.Redirect(w, r, newPath, statusCode)
+	toURL.Path += "/"
+
+	http.Redirect(w, r, toURL.String(), http.StatusMovedPermanently)
+}
+
+// RedirectToFile replies to the request with a redirect to the URL in r, which
+// has been transformed to indicate that the resource being requested is a
+// file.
+func RedirectToFile(w http.ResponseWriter, r *http.Request) {
+	toURL, _ := url.Parse(r.URL.String())
+
+	path, ok := r.Context().Value(URLPathCtxKey).(string)
+	if ok && strings.HasSuffix(path, "/") {
+		toURL.Path = path
+	}
+	toURL.Path = strings.TrimSuffix(toURL.Path, "/")
+
+	http.Redirect(w, r, toURL.String(), http.StatusMovedPermanently)
 }
 
 // IndexPages is a list of pages that may be understood as
@@ -280,3 +304,8 @@ func mapFSRootOpenErr(originalErr error) error {
 	}
 	return originalErr
 }
+
+// URLPathCtxKey is a context key. It can be used in HTTP handlers with
+// context.WithValue to access the original request URI that accompanied the
+// server request. The associated value will be of type string.
+const URLPathCtxKey caddy.CtxKey = "url_path"
